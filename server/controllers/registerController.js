@@ -1,25 +1,34 @@
+const Joi = require('joi');
+const bcrypt = require('bcrypt');
 const User = require('../data/User');
-const bcrypt = require('bcryptjs');
 
-const handleNewUser = async (req, res) => {
-    const { user, pwd, store, phone, coords } = req.body;
-    if (!user || !pwd || !store || !phone || !coords) return res.status(400).json({ 'message': 'all fields are required' });
-    const duplicate = await User.findOne({username: user}).exec();
-    if (duplicate) return res.sendStatus(409);
-    try {
-        const hashedPwd = await bcrypt.hash(pwd, 10);
-        const result = await User.create({ 
-            "username": user,
-            "password": hashedPwd,
-            "store": store,
-            "phone": phone,
-            "coordinates": coords
-        });
-        console.log(result);
-        res.status(201).json({ 'success': `New user ${user} created!` });
-    } catch (err) {
-        res.status(500).json({ 'message': err.message });
-    }
-}
+// Define input schema
+const registerSchema = Joi.object({
+  username: Joi.string().alphanum().min(3).max(30).required(),
+  password: Joi.string().min(8).required(),
+  email: Joi.string().email().required()
+});
 
-module.exports = { handleNewUser };
+exports.register = async (req, res) => {
+  // Validate and sanitize input
+  const { error, value } = registerSchema.validate(req.body);
+  if (error) {
+    return res.status(400).json({ message: error.details[0].message });
+  }
+  const { username, password, email } = value;
+
+  try {
+    const exists = await User.findOne({ username });
+    if (exists) return res.status(409).json({ message: 'User exists' });
+
+    // Hash password securely
+    const saltRounds = 12;
+    const hashed = await bcrypt.hash(password, saltRounds);
+
+    const newUser = new User({ username, email, password: hashed });
+    await newUser.save();
+    res.status(201).json({ message: 'User created' });
+  } catch (err) {
+    res.status(500).json({ message: 'Internal error' });
+  }
+};
