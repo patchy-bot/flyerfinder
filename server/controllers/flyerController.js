@@ -1,35 +1,25 @@
-const Flyer = require("../data/Flyer");
+// server/controllers/flyerController.js
+const Flyer = require('../data/Flyer');
 
-const addFlyer = async (req, res) => {
-    try {
-      const { seller, flyer, validUntil } = req.body; // Date format YYYY-mm-dd
-      console.log(seller, flyer, validUntil);
-      const uploadFlyer = new Flyer({ seller, flyer, validUntil });
-      console.log(uploadFlyer);
-      await uploadFlyer.save();
-      res.json({ success: true, status: "Flyer uploaded" });
-    } catch (err) {
-        res.status(500).json({ success: false, error: err });
+// Assumes verifyJWT middleware populates req.user
+async function createFlyer(req, res, next) {
+  try {
+    // Authorization: only users with role 'admin' can create flyers
+    if (!req.user || req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Forbidden: insufficient privileges' });
     }
-}
 
-const getFlyers = async (req, res) => {
-  const currentDate = new Date(); // Get the current date and time
-  try {
-    const flyers = await Flyer.find({validUntil: { $gte: currentDate }});
-    res.json({ success: true, flyers });
+    const { title, description, imageUrl } = req.body;
+    if (!title || !description) {
+      return res.status(400).json({ message: 'Missing required fields' });
+    }
+
+    const flyer = new Flyer({ title, description, imageUrl, createdBy: req.user.id });
+    const saved = await flyer.save();
+    res.status(201).json(saved);
   } catch (err) {
-    res.status(500).json({ success: false, error: err });
+    next(err);
   }
 }
 
-const getFlyerFromID = async (req, res) => {
-  try {
-    const flyer = await Flyer.findById(req.params.id);
-    res.json({ success: true, flyer });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err });
-  }
-}
-
-module.exports = { addFlyer, getFlyers, getFlyerFromID };
+module.exports = { createFlyer };
