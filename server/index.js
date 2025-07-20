@@ -1,59 +1,32 @@
-require("dotenv").config();
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const cors = require("cors");
-const mongoose = require("mongoose");
-const connectDB = require("./config/connectMongo");
-const verifyJWT = require("./middleware/verifyJWT");
-const cookieParser = require("cookie-parser");
-const credentials = require("./middleware/credentials");
-
+// server/index.js
+const express = require('express');
 const app = express();
-const PORT = process.env.PORT || 3001;
+const credentials = require('./middleware/credentials');
+const verifyJWT = require('./middleware/verifyJWT');
 
-// CORS configuration
-const corsOptions = {
-  origin: ["https://findflyerswith.us", "http://localhost:3000"],
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  allowedHeaders: "Content-Type,Authorization",
-  credentials: true, // Allow credentials
-};
+const flyerRoutes = require('./routes/flyer');
+const filterRoutes = require('./routes/api/filter');
+const imageRoutes = require('./routes/image');
+// ... other imports
 
 app.use(credentials);
-app.use(cookieParser());
-app.use(cors(corsOptions));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json({ strict: true }));
-app.enable("trust proxy");
-app.disable("x-powered-by");
-connectDB();
+app.use(express.json());
 
-app.use(express.static("public"));
+// Public routes
+app.use('/login', require('./routes/login'));
+app.use('/refresh', require('./routes/refresh'));
+app.use('/register', require('./routes/register'));
 
-app.use("/register", require("./routes/register"));
-app.use("/login", require("./routes/login"));
-app.use("/refresh", require("./routes/refresh"));
-app.use("/logout", require("./routes/logout"));
+// Protected routes
+app.use('/flyer', verifyJWT, flyerRoutes);
+app.use('/filter', verifyJWT, filterRoutes);
+app.use('/image', verifyJWT, imageRoutes);
 
-app.use("/flyer", require("./routes/flyer"));
-app.use("/api/filter", require("./routes/api/filter"));
-app.use("/image", require("./routes/image"));
-
-// 404 middleware
-app.use((req, res, next) => {
-  res.status(404).json({ error: "endpoint not found" });
-});
-
-// Global error handling middleware
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  console.error(err);
+  res.status(500).json({ message: 'Internal Server Error' });
 });
 
-mongoose.connection.once("open", () => {
-  console.log("Connected to MongoDB");
-  app.listen(PORT, () => {
-    console.log(`Listening on port ${PORT}`);
-  });
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on ${PORT}`));
