@@ -1,59 +1,51 @@
-require("dotenv").config();
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const cors = require("cors");
-const mongoose = require("mongoose");
-const connectDB = require("./config/connectMongo");
-const verifyJWT = require("./middleware/verifyJWT");
-const cookieParser = require("cookie-parser");
-const credentials = require("./middleware/credentials");
+// server/index.js
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
+const verifyJWT = require('./middleware/verifyJWT');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// CORS configuration
-const corsOptions = {
-  origin: ["https://findflyerswith.us", "http://localhost:3000"],
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  allowedHeaders: "Content-Type,Authorization",
-  credentials: true, // Allow credentials
-};
+// SECURITY: Use Helmet to set secure HTTP headers
+app.use(helmet());
 
-app.use(credentials);
+// SECURITY: Only allow trusted origins, enable credentials over HTTPS
+const allowedOrigins = process.env.CORS_ORIGINS.split(',');
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS policy violation'));
+    }
+  },
+  credentials: true,
+  methods: ['GET','POST','PUT','DELETE'],
+  optionsSuccessStatus: 200
+}));
+
+app.use(express.json());
 app.use(cookieParser());
-app.use(cors(corsOptions));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json({ strict: true }));
-app.enable("trust proxy");
-app.disable("x-powered-by");
-connectDB();
 
-app.use(express.static("public"));
+// Public routes
+app.use('/api/login', require('./routes/login'));
+app.use('/api/register', require('./routes/register'));
 
-app.use("/register", require("./routes/register"));
-app.use("/login", require("./routes/login"));
-app.use("/refresh", require("./routes/refresh"));
-app.use("/logout", require("./routes/logout"));
+// Protected routes
+app.use('/api/refresh', require('./routes/refresh'));
+app.use(verifyJWT);  // JWT middleware applied here
+app.use('/api/flyer', require('./routes/flyer'));
+app.use('/api/filter', require('./routes/api/filter'));
+app.use('/api/logout', require('./routes/logout'));
+app.use('/api/image', require('./routes/image'));
 
-app.use("/flyer", require("./routes/flyer"));
-app.use("/api/filter", require("./routes/api/filter"));
-app.use("/image", require("./routes/image"));
-
-// 404 middleware
-app.use((req, res, next) => {
-  res.status(404).json({ error: "endpoint not found" });
-});
-
-// Global error handling middleware
+// Error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
-mongoose.connection.once("open", () => {
-  console.log("Connected to MongoDB");
-  app.listen(PORT, () => {
-    console.log(`Listening on port ${PORT}`);
-  });
-});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
