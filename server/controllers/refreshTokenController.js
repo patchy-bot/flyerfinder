@@ -1,34 +1,42 @@
-const User = require("../data/User");
-const jwt = require("jsonwebtoken");
+const jwt = require('jsonwebtoken');
+const User = require('../data/User');
 
-const handleRefreshToken = async (req, res) => {
+exports.refreshToken = async (req, res) => {
   const cookies = req.cookies;
-  console.log(cookies);
   if (!cookies?.jwt) return res.sendStatus(401);
+
   const refreshToken = cookies.jwt;
+  const user = await User.findOne({ refreshToken });
+  if (!user) return res.sendStatus(403); // Forbidden
 
-  const foundUser = await User.findOne({ refreshToken }).exec();
-  if (!foundUser) return res.sendStatus(403); //Forbidden
-  // evaluate jwt
-  jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET, (err, decoded) => {
-    if (err || foundUser.username !== decoded.username)
-      return res.sendStatus(403);
-    const user = decoded.username;
-    const phone = foundUser.phone;
-    const coords = foundUser.coordinates;
-    const accessToken = jwt.sign(
-      {
-        UserInfo: {
-          username: foundUser.username,
-          phone: phone,
-          coordinates: coords,
-        },
-      },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: "1d" }
-    );
-    res.json({ user, phone, coords, accessToken });
-  });
+  jwt.verify(
+    refreshToken,
+    process.env.REFRESH_TOKEN_SECRET,
+    async (err, decoded) => {
+      if (err || decoded.username !== user.username) {
+        return res.sendStatus(403);
+      }
+      // Rotate refresh token
+      const newRefreshToken = jwt.sign(
+        { username: user.username },
+        process.env.REFRESH_TOKEN_SECRET,
+        { expiresIn: '7d' }
+      );
+      user.refreshToken = newRefreshToken;
+      await user.save();
+
+      const accessToken = jwt.sign(
+        { UserInfo: { username: user.username, roles: user.roles } },
+        process.env.ACCESS_TOKEN_SECRET,
+        { expiresIn: '15m' }
+      );
+      res.cookie('jwt', newRefreshToken, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Strict',
+        maxAge: 7 * 24 * 60 * 60 * 1000
+      });
+      res.json({ accessToken });
+    }
+  );
 };
-
-module.exports = { handleRefreshToken };
