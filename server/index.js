@@ -1,59 +1,47 @@
-require("dotenv").config();
-const express = require("express");
-const fs = require("fs");
-const path = require("path");
-const cors = require("cors");
-const mongoose = require("mongoose");
-const connectDB = require("./config/connectMongo");
-const verifyJWT = require("./middleware/verifyJWT");
-const cookieParser = require("cookie-parser");
-const credentials = require("./middleware/credentials");
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const verifyJWT = require('./middleware/verifyJWT');
+const credentials = require('./middleware/credentials');
+
+const loginRouter = require('./routes/login');
+const registerRouter = require('./routes/register');
+const refreshRouter = require('./routes/refresh');
+const logoutRouter = require('./routes/logout');
+const flyerRouter = require('./routes/flyer');
+const filterRouter = require('./routes/api/filter');
+const imageRouter = require('./routes/image');
 
 const app = express();
-const PORT = process.env.PORT || 3001;
 
-// CORS configuration
-const corsOptions = {
-  origin: ["https://findflyerswith.us", "http://localhost:3000"],
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
-  allowedHeaders: "Content-Type,Authorization",
-  credentials: true, // Allow credentials
-};
-
-app.use(credentials);
+// Security middleware
+app.use(helmet());
+app.use(express.json());
 app.use(cookieParser());
-app.use(cors(corsOptions));
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json({ strict: true }));
-app.enable("trust proxy");
-app.disable("x-powered-by");
-connectDB();
+app.use(credentials());
 
-app.use(express.static("public"));
+// Rate limiter for auth endpoints
+defineAuthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, message: 'Too many requests, please try again later.' });
+app.use('/api/login', defineAuthLimiter);
+app.use('/api/register', defineAuthLimiter);
 
-app.use("/register", require("./routes/register"));
-app.use("/login", require("./routes/login"));
-app.use("/refresh", require("./routes/refresh"));
-app.use("/logout", require("./routes/logout"));
+// Public routes
+app.use('/api/login', loginRouter);
+app.use('/api/register', registerRouter);
+app.use('/api/refresh', refreshRouter);
 
-app.use("/flyer", require("./routes/flyer"));
-app.use("/api/filter", require("./routes/api/filter"));
-app.use("/image", require("./routes/image"));
+// Protected routes - require JWT
+app.use(verifyJWT);
+app.use('/api/logout', logoutRouter);
+app.use('/api/flyer', flyerRouter);
+app.use('/api/filter', filterRouter);
+app.use('/api/image', imageRouter);
 
-// 404 middleware
-app.use((req, res, next) => {
-  res.status(404).json({ error: "endpoint not found" });
-});
-
-// Global error handling middleware
+// Global error handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  res.status(500).json({ message: 'Server error' });
 });
 
-mongoose.connection.once("open", () => {
-  console.log("Connected to MongoDB");
-  app.listen(PORT, () => {
-    console.log(`Listening on port ${PORT}`);
-  });
-});
+module.exports = app;
