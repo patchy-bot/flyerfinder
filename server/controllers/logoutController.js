@@ -1,22 +1,22 @@
-const User = require("../data/User");
+const User = require('../data/User');
 
-const handleLogout = async (req, res) => {
-  // Delete access token on client
+exports.logout = async (req, res) => {
   const cookies = req.cookies;
-  if (!cookies?.jwt) return res.sendStatus(204);
+  if (!cookies?.jwt) return res.sendStatus(204); // No content
+
   const refreshToken = cookies.jwt;
-
-  const foundUser = await User.findOne({ refreshToken }).exec();
-  if (!foundUser) {
-    res.clearCookie("jwt", { httpOnly: true, sameSite: "None" });
-    return res.sendStatus(204);
+  // Clear refreshToken in DB
+  const user = await User.findOne({ refreshToken });
+  if (user) {
+    user.refreshToken = '';
+    await user.save();
   }
-  foundUser.refreshToken = "";
-  const result = await foundUser.save();
-  console.log(result);
 
-  res.clearCookie("jwt", { httpOnly: true, sameSite: "None", secure: true });
+  // Clear cookie with same flags
+  res.clearCookie('jwt', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Strict'
+  });
   res.sendStatus(204);
 };
-
-module.exports = { handleLogout };
