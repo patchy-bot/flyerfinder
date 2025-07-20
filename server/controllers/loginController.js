@@ -1,55 +1,48 @@
-const User = require("../data/User");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+// server/controllers/loginController.js
+const User = require('../data/User');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
 
-const handleLogin = async (req, res) => {
-  const { user, pwd } = req.body;
-  if (!user || !pwd)
-    return res
-      .status(400)
-      .json({ message: "Username and password are required." });
-  const foundUser = await User.findOne({ username: user }).exec();
-  if (!foundUser) return res.sendStatus(401); //Unauthorized
-  // evaluate password
-  const match = await bcrypt.compare(pwd, foundUser.password);
-  if (match) {
-    const store = foundUser.store;
-    const phone = foundUser.phone;
-    const coords = foundUser.coordinates;
-    // create JWTs
-    const accessToken = jwt.sign(
-      {
-        UserInfo: {
-          username: foundUser.username,
-          store: store,
-          phone: phone,
-          coordinates: coords,
-        },
-      },
-      process.env.ACCESS_TOKEN_SECRET,
-      { expiresIn: "1d" }
-    );
-    const refreshToken = jwt.sign(
-      { username: foundUser.username },
-      process.env.REFRESH_TOKEN_SECRET,
-      { expiresIn: "10d" }
-    );
-
-    // Saving refreshToken with current user
-    foundUser.refreshToken = refreshToken;
-    const result = await foundUser.save();
-    console.log(result);
-
-    res.cookie("jwt", refreshToken, {
-      httpOnly: true,
-      sameSite: "None",
-      secure: true,
-      maxAge: 24 * 60 * 60 * 1000,
-    });
-    res.json({ user, store, phone, coords, accessToken });
-  } else {
-    res.sendStatus(401);
+async function handleLogin(req, res) {
+  const { username, password } = req.body;
+  if (!username || typeof username !== 'string' || username.length > 50) {
+    return res.status(400).json({ error: 'Invalid username' });
   }
-};
+  if (!password || typeof password !== 'string' || password.length < 8) {
+    return res.status(400).json({ error: 'Invalid password' });
+  }
+
+  const user = await User.findOne({ username }).exec();
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const match = await bcrypt.compare(password, user.passwordHash);
+  if (!match) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  // ISSUE_TOKEN: shorter-lived access token, httpOnly cookie for refresh
+  const accessToken = jwt.sign(
+    { UserInfo: { username: user.username, roles: user.roles } },
+    process.env.ACCESS_TOKEN_SECRET,
+    { expiresIn: '15m' }
+  );
+  const refreshToken = jwt.sign(
+    { username: user.username },
+    process.env.REFRESH_TOKEN_SECRET,
+    { expiresIn: '7d' }
+  );
+
+  // Secure cookie flags
+  res.cookie('jwt', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  res.json({ accessToken });
+}
 
 module.exports = { handleLogin };
