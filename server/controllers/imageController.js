@@ -1,24 +1,36 @@
-const multer = require("multer");
-const path = require("path");
-const fs = require("fs");
+// server/controllers/imageController.js
+const path = require('path');
+const fs = require('fs');
 
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    const dir = path.join(__dirname, "../public/images");
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+async function uploadImage(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
     }
-    cb(null, dir);
-  },
-  filename: function (req, file, cb) {
-    const user = req.params.user; // Extract the user parameter from the request URL
-    cb(null, user + ".png");
-  },
-});
 
-const uploadImage = multer({
-  storage: storage,
-  limits: { fileSize: 1000000000 },
-}).single("image");
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file uploaded' });
+    }
+
+    // Validate extension
+    const allowedExt = ['.png', '.jpg', '.jpeg', '.gif'];
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (!allowedExt.includes(ext)) {
+      return res.status(400).json({ message: 'Invalid file type' });
+    }
+
+    // Generate secure filename
+    const fileName = `${req.user.id}-${Date.now()}${ext}`;
+    const uploadPath = path.join(__dirname, '../uploads', fileName);
+
+    // Move file from temp to destination
+    fs.rename(req.file.path, uploadPath, err => {
+      if (err) return next(err);
+      res.status(200).json({ url: `/uploads/${fileName}` });
+    });
+  } catch (err) {
+    next(err);
+  }
+}
 
 module.exports = { uploadImage };
